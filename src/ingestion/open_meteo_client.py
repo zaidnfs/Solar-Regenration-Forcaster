@@ -1,4 +1,4 @@
-from requests import request
+from pathlib import Path
 import requests
 import pandas as pd
 
@@ -33,7 +33,20 @@ def fetch_historical_forecasts(
         "wind_speed_unit": "ms",
         
     }
-    
+    cache_path = Path(cache_dir)                #Need to conver the 'str' to path object
+    cache_path.mkdir(parents=True, exist_ok= True)       #Check if dir exist if not Create
+
+    #Cache data to avoide repetative API calls
+
+    cache_file = cache_path / f"weather_forcasts_{latitude}_{longitude}_{start_date}_{end_date}.parquet"
+
+    #If data already exist in cache return it in dataframe
+
+    if cache_file.exists():
+        print(f"Loading cached weather forecast from {cache_file}")
+        return pd.read_parquet(cache_file)
+
+
     response = requests.get(base_url, params=params, timeout=10)
     response.raise_for_status()
 
@@ -45,6 +58,11 @@ def fetch_historical_forecasts(
 
     df["time"] = pd.to_datetime(df["time"], utc= True)      #Having the time column in UTC is critical for uniquely identify the rows
     df.set_index("time", inplace= True)
+
+    #Save fetched data locally for later use and prevent identical API call
+
+    df.to_parquet(cache_file)
+    print(f"Cached weather forecast to {cache_file}") 
 
     return df
 
