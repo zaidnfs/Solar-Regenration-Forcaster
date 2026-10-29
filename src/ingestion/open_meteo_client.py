@@ -1,19 +1,17 @@
+from urllib3.util import Retry
 from pathlib import Path
 import requests
+from requests.adapters import HTTPAdapter
 import pandas as pd
+import logging
 
-# Fetching Weather Data From Open-Meteo API
-def fetch_historical_forecasts(
-    latitude: float,        # Required Field for Latitude
-    longitude: float,       # Required Field for Longitude
-    start_date: str,
-    end_date: str,
-    cache_dir: str = "data/raw"
+logger = logging.getLogger(__name__)
 
-) -> pd.DataFrame:
-    base_url = ("https://historical-forecast-api.open-meteo.com/v1/forecast")
+class OpenMeteoClient:
+    HISTORICAL_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+    FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
-    hourly_variables = [
+    DEFAULT_VARIABLES = [
         "shortwave_radiation",
         "direct_normal_irradiance",
         "diffuse_radiation",
@@ -23,52 +21,78 @@ def fetch_historical_forecasts(
         "relative_humidity_2m",
     ]
 
-    params = {
+    def __init__(self, cache_dir: Path | str = "data/raw", timeout: float = 10.0, max_retries: int = 3, backoff_factor: float = 0.5):
+        cache_path = Path(cache_dir)
+        cache_path.mkdir(parents = True, exist_ok = True)
+        self.cache_dir = cache_path
+        self.timeout = timeout
+        self.session = requests.Session()
+        retry = Retry(
+            total = max_retries,
+            backoff_factor = backoff_factor,
+            status_forcelist = [429, 500, 502, 503, 504],
+            allowed_methods = ["GET"],
+            raise_on_status = False,
+        )
+        adapter = HTTPAdapter(max_retries = retry)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
+    def _to_dataframe(self, data:dict) -> pd.DataFrame:
+        if "hourly" not in data:
+            raise ValueError(f"Open-Meteo response did not contain 'hourly' data: {data}")
+        df = pd.DataFrame(data["hourly"])
+        df["time"] = pd.to_datetime(df["time"], utc = True)
+        df.set_index("time", inplace = True)
+
+        return df
+
+    def _get(self, url: str, params: dict) -> dict:
+        response = self.session.get(url, params = params, timeout = self.timeout)
+        response.raise_for_status()
+
+        return response.json()
+
+    def get_historical_forecast(
+        self,
+        latitude: float,
+        longitude: float,
+        start_date: str,
+        end_date: str,
+        force_refresh: bool = False,
+        ) -> pd.DataFrame:
+
+        params = {
         "latitude": latitude,
         "longitude": longitude,
         "start_date": start_date,
         "end_date": end_date,
-        "hourly": hourly_variables,
+        "hourly": self.DEFAULT_VARIABLES,
         "timezone": "UTC",
         "wind_speed_unit": "ms",
-        
-    }
-    cache_path = Path(cache_dir)                #Need to conver the 'str' to path object
-    cache_path.mkdir(parents=True, exist_ok= True)       #Check if dir exist if not Create
+        }
 
-    #Cache data to avoide repetative API calls
+        cache_file = self.cache_dir / f"weather_forecasts_{latitude}_{longitude}_{start_date}_{end_date}.parquet"
+        if cache_file.exists() and not force_refresh:
+            logger.info(f"Loading cached weather forecast from {cache_file}")
+            return pd.read_parquet(cache_file)
 
-    cache_file = cache_path / f"weather_forcasts_{latitude}_{longitude}_{start_date}_{end_date}.parquet"
+        data = self._get(self.HISTORICAL_URL, params)
+        df = self._to_dataframe(data)
+        df.to_parquet(cache_file)
+        logger.info(f"Cached weather forecast to {cache_file}")
 
-    #If data already exist in cache return it in dataframe
+        return df
 
-    if cache_file.exists():
-        print(f"Loading cached weather forecast from {cache_file}")
-        return pd.read_parquet(cache_file)
+if __name__ == "__main__":
 
+    logging.basicConfig(level = logging.INFO)
 
-    response = requests.get(base_url, params=params, timeout=10)
-    response.raise_for_status()
-
-    data = response.json()          #Responses without the Hourly data raises Error
-    if "hourly" not in data:
-        raise ValueError(f"Open-Meteo response did not contain 'hourly' data: {data}")
-    
-    df = pd.DataFrame(data["hourly"])           #Convert the hourly data into a Dataframe
-
-    df["time"] = pd.to_datetime(df["time"], utc= True)      #Having the time column in UTC is critical for uniquely identify the rows
-    df.set_index("time", inplace= True)
-
-    #Save fetched data locally for later use and prevent identical API call
-
-    df.to_parquet(cache_file)
-    print(f"Cached weather forecast to {cache_file}") 
-
-    return df
-
-
-# fetch_open_meteo_solar(12.9716, 77.5946)
-
-weather_data = fetch_historical_forecasts(12.9716, 77.5946, "2024-01-01", "2024-01-07")
-
-print(weather_data)
+    client = OpenMeteoClient()
+    df = client.get_historical_forecast(
+            latitude = 26.850000,
+            longitude = 80.949997,
+            start_date = "2026-01-01",
+            end_date = "2026-01-07"
+        )
+    print(df.head)
