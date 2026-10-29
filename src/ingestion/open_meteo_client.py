@@ -84,15 +84,51 @@ class OpenMeteoClient:
 
         return df
 
+    def get_live_forecast(
+        self,
+        latitude: float,
+        longitude: float,
+        forecast_days: int,
+        force_refresh: bool = True,
+    ) -> pd.DataFrame:
+
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "forecast_days": forecast_days,
+            "hourly": self.DEFAULT_VARIABLES,
+            "timezone": "UTC",
+            "wind_speed_unit": "ms",
+            }
+
+        cache_file = self.cache_dir / f"live_weather_forecasts_{latitude}_{longitude}_{forecast_days}d.parquet"
+        if cache_file.exists() and not force_refresh:
+            logger.info(f"Loading cached weather forecast from {cache_file}")
+            return pd.read_parquet(cache_file)
+        
+        data = self._get(self.FORECAST_URL, params)
+        df = self._to_dataframe(data)
+        df.to_parquet(cache_file)
+        logger.info(f"Cached weather forecast to {cache_file}")
+        
+        return df
+
 if __name__ == "__main__":
 
     logging.basicConfig(level = logging.INFO)
 
     client = OpenMeteoClient()
-    df = client.get_historical_forecast(
-            latitude = 26.850000,
-            longitude = 80.949997,
-            start_date = "2026-01-01",
-            end_date = "2026-01-07"
-        )
-    print(df.head)
+        # df = client.get_historical_forecast(
+        #         latitude = 26.850000,
+        #         longitude = 80.949997,
+        #         start_date = "2026-01-01",
+        #         end_date = "2026-01-07",
+        #         force_refresh = False,
+        #     )
+    df = client.get_live_forecast(
+        latitude = 26.850000,
+        longitude = 80.949997,
+        forecast_days = 7,
+        force_refresh = False
+    )
+    print(df.head())
