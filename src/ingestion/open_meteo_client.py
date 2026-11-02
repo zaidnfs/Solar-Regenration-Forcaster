@@ -21,7 +21,13 @@ class OpenMeteoClient:
         "relative_humidity_2m",
     ]
 
-    def __init__(self, cache_dir: Path | str = "data/raw", timeout: float = 10.0, max_retries: int = 3, backoff_factor: float = 0.5):
+    def __init__(
+        self,
+        cache_dir: Path | str = "data/raw",
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        backoff_factor: float = 0.5
+    ):
         cache_path = Path(cache_dir)
         cache_path.mkdir(parents = True, exist_ok = True)
         self.cache_dir = cache_path
