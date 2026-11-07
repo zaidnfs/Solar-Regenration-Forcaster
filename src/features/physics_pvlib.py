@@ -28,3 +28,41 @@ def calculate_effective_solar_timestamps(ts_index: pd.DatetimeIndex) -> pd.Datet
     shifted_index = ts_index - pd.Timedelta(minutes=30)
 
     return shifted_index
+
+def compute_solar_position(
+    ts_index: pd.DatetimeIndex,
+    latitude: float = DEFAULT_LATITUDE,
+    longitude: float = DEFAULT_LONGITUDE,
+    altitude: float = DEFAULT_ALTITUDE,
+    ) -> pd.DataFrame:
+
+    shifted_ts = calculate_effective_solar_timestamps(ts_index)
+
+    solpos = solarposition.get_solarposition(
+        time = shifted_ts,
+        latitude = latitude,
+        longitude = longitude,
+        altitude = altitude,
+    )
+
+    airmass = atmosphere.get_relative_airmass(solpos["apparent_zenith"])
+    airmass = airmass.fillna(0.0)       #At night no sunlight, Thus value = NaN, Thus NaN switched to 0.0
+
+    is_night = solpos["zenith"] >= 85.0     # If the angel of the sun from the perpendicular line at the location is greater that 85* that means its sunset/night time.
+
+    df = pd.DataFrame(
+            {
+                "solar_zenith": solpos["zenith"].values,
+                "solar_azimuth": solpos["azimuth"].values,
+                "solar_elevation": solpos["elevation"].values,
+                "airmass": airmass.values,
+                "is_night": is_night.values,
+            },
+            index = ts_index,
+        )
+    return df
+
+if __name__ == "__main__":
+    test_index = pd.date_range("2025-01-01", periods = 5, freq="1h", tz="UTC")
+    solar_df = compute_solar_position(test_index)
+    print(solar_df)
