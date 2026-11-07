@@ -110,6 +110,11 @@ def compute_poa_irradiance(
     model: str = "haydavies",
     ) -> pd.DataFrame:
     
+    "The Hay-Davies transposition model accounts for circumsolar brightening (the sky is brighter right around the sun disc)."
+    "To calculate this brightening factor accurately, the model needs to know the extraterrestrial radiation (dni_extra)"
+    "— the intensity of solar rays just outside the Earth's atmosphere,"
+    "which fluctuates slightly throughout the year as the Earth's orbit moves closer to or farther from the Sun."
+    
     dni_extra = irradiance.get_extra_radiation(solar_zenith.index)
 
     poa = irradiance.get_total_irradiance(
