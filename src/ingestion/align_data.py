@@ -1,14 +1,15 @@
+import logging
+from pathlib import Path
+
+import pandas as pd
 from open_meteo_client import OpenMeteoClient
 from pvdaq_loader import PVDAQLoader
-import pandas as pd
-from pathlib import Path
-import logging
 
 logger = logging.getLogger(__name__)
 
 def align_weather_and_actuals(weather_df: pd.DataFrame, actuals_df: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(weather_df.index, pd.DatetimeIndex) or not isinstance(actuals_df.index, pd.DatetimeIndex):
-        raise ValueError("Both DataFrames must be indexed by pd.DatetimeIndex.")
+        raise TypeError("Both DataFrames must be indexed by pd.DatetimeIndex.")
     if not (str(weather_df.index.tz) == "UTC") or not (str(actuals_df.index.tz) == "UTC"):
         raise ValueError("Both DataFrames indices must be 'UTC' format.")
 

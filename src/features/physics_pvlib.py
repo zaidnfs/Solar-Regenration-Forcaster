@@ -1,8 +1,7 @@
 import logging
+
 import pandas as pd
-import numpy as np
-import logging
-from pvlib import solarposition, atmosphere, location, irradiance
+from pvlib import atmosphere, irradiance, location, solarposition, temperature
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +139,38 @@ def compute_poa_irradiance(
 
     return df
 
+def compute_cell_temperature_and_derating(
+    poa_global: pd.Series,
+    temp_air: pd.Series,
+    wind_speed: pd.Series,
+    u0: float = 25.0,
+    u1: float = 6.84,
+    gamma: float = -0.004,
+    ) -> pd.DataFrame:
+
+    t_cell =temperature.faiman(
+            poa_global=poa_global,
+            temp_air=temp_air,
+            wind_speed=wind_speed,
+            u0=u0,
+            u1=u1,
+        )
+    
+    derating = 1.0 + gamma * (t_cell - 25.0)
+
+    df = pd.DataFrame(
+        {
+            "cell_temperature": t_cell.round(1),
+            "thermal_derating": derating.round(3)
+        },
+        index=poa_global.index,
+    )
+
+    return df
+
+
 if __name__ == "__main__":
+    print(__name__)
 
     logging.basicConfig(level=logging.INFO)
 

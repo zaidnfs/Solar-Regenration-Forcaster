@@ -1,9 +1,10 @@
-from urllib3.util import Retry
+import logging
 from pathlib import Path
+
+import pandas as pd
 import requests
 from requests.adapters import HTTPAdapter
-import pandas as pd
-import logging
+from urllib3.util import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ class OpenMeteoClient:
     HISTORICAL_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
     FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
-    DEFAULT_VARIABLES = [
+    DEFAULT_VARIABLES = (
         "shortwave_radiation",
         "direct_normal_irradiance",
         "diffuse_radiation",
@@ -19,7 +20,7 @@ class OpenMeteoClient:
         "temperature_2m",
         "wind_speed_10m",
         "relative_humidity_2m",
-    ]
+    )
 
     def __init__(
         self,
