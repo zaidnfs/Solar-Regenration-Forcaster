@@ -168,6 +168,47 @@ def compute_cell_temperature_and_derating(
 
     return df
 
+# For computing all values and returning it together in a single df.
+def add_physics_features(
+    df: pd.DataFrame,
+    latitude: float = DEFAULT_LATITUDE,
+    longitude: float =  DEFAULT_LONGITUDE,
+    altitude: float = DEFAULT_ALTITUDE,
+    surface_tilt: float =  DEFAULT_TILT,
+    surface_azimuth: float = DEFAULT_AZIMUTH,
+    ) -> pd.DataFrame:
+
+    df_out = df.copy()      # Defensive Copy of the df to prevent mutation
+
+    solar_df = compute_solar_position(df_out.index, latitude, longitude, altitude)
+    
+    clearsky_df = compute_clearsky_irradiance(df_out.index, latitude, longitude, altitude)
+    
+    kc = compute_clearsky_index(
+        ghi_forecast=df_out["shortwave_radiation"],
+        ghi_clear=clearsky_df["ghi_clear"],
+        )
+    
+    poa_df = compute_poa_irradiance(
+        surface_tilt=surface_tilt,
+        surface_azimuth=surface_azimuth,
+        solar_zenith=solar_df["solar_zenith"],
+        solar_azimuth=solar_df["solar_azimuth"],
+        dni=df_out["direct_normal_irradiance"],
+        ghi=df_out["shortwave_radiation"],
+        dhi=df_out["diffuse_radiation"]
+        )
+    
+    thermal_df = compute_cell_temperature_and_derating(
+        poa_global=poa_df["poa_global"],
+        temp_air=df_out["temperature_2m"],
+        wind_speed=df_out["wind_speed_10m"]
+    )
+    # Merge all dfs
+    enriched_df = pd.concat([df_out, solar_df, clearsky_df, kc, poa_df, thermal_df], axis=1)
+
+    return enriched_df
+
 
 if __name__ == "__main__":
     print(__name__)
@@ -175,39 +216,10 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     aligned_df = pd.read_parquet("data/processed/aligned_telemetry.parquet")
-    sample = aligned_df.iloc[0:12]
-    
-    test_index = pd.date_range("2025-01-01", periods = 5, freq="1h", tz="UTC")
-    solar_df = compute_solar_position(sample.index)
-    clearsky_df = compute_clearsky_irradiance(sample.index)
-    
-    kc = compute_clearsky_index(
-        ghi_forecast=sample["shortwave_radiation"],
-        ghi_clear=clearsky_df["ghi_clear"]
-    )
-    
-    poa_df = compute_poa_irradiance(
-        surface_tilt=DEFAULT_TILT,
-        surface_azimuth=DEFAULT_AZIMUTH,
-        solar_zenith=solar_df["solar_zenith"],
-        solar_azimuth=solar_df["solar_azimuth"],
-        dni=sample["direct_normal_irradiance"],
-        ghi=sample["shortwave_radiation"],
-        dhi=sample["diffuse_radiation"],
-    )
+    sample = aligned_df.head(5)
 
-    test_results = pd.DataFrame(
-        {
-            "GHI_forecast":sample["shortwave_radiation"],
-            "GHI_clear":clearsky_df["ghi_clear"].round(1),
-            "k_c":kc.round(2),
-            "POA_global":poa_df["poa_global"].round(1),
-            "Actual_kw":sample["power_kw"].round(1),
-        }
-    )
-    # print("--- Solar Position ---")
-    # print(solar_df)
-    # print("--- Clear-Sky Irradiance ---")
-    # print(clearsky_df)
-    print("\n--- Physics-Informed Feature validation (Day 1)--- ")
-    print(test_results)
+    physics_sample = add_physics_features(sample)
+    print(physics_sample.info())
+    print(physics_sample.head(5))
+    
+    
