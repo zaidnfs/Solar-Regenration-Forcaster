@@ -1,6 +1,5 @@
 import logging
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -19,14 +18,18 @@ class PersistenceModel:
         return preds
 
 class PhysicalClearSkyBaseline:
-    def __init__(self, nameplate_capacity_kw: float = 250.0):
+    def __init__(
+        self,
+        nameplate_capacity_kw: float = 250.0,
+        system_degrade: float = 0.80,
+        ):
         self.nameplate_capacity_kw = nameplate_capacity_kw
+        self.system_degrade = system_degrade
 
     def predict(self, df: pd.DataFrame) -> pd.Series:
-        power = self.nameplate_capacity_kw * (df["poa_global"] / 1000.0) * df["thermal_derating"]
-        cloud_factor = 1.0 - 0.75 * np.power(df["cloud_cover"] / 100.0, 3.4)
-        preds = power * cloud_factor
-        preds = preds.mask(df["is_night"], 0.0)
+        power = self.nameplate_capacity_kw * (df["poa_global"] / 1000.0 * df["thermal_derating"] * self.system_degrade)
+
+        preds = power.mask(df["is_night"], 0.0)
         preds = preds.clip(lower = 0.0, upper = 1.1 * self.nameplate_capacity_kw)
 
         preds.name = "physical_preds"
