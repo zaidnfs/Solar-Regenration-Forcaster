@@ -6,19 +6,20 @@ def calculate_nmae(
     actual: pd.Series,
     predicted: pd.Series,
     capacity_kw: float = 250.0,
-    ) -> float:
+) -> float:
     """
-        Normalized Mean Absolute Error (nMAE) as a percentage of plant capacity.
+    Normalized Mean Absolute Error (nMAE) as a percentage of plant capacity.
     """
     mae = np.mean(np.abs(actual - predicted))
 
     return float((mae / capacity_kw) * 100.0)
 
+
 def calculate_nrmse(
     actual: pd.Series,
     predicted: pd.Series,
     capacity_kw: float = 250.0,
-    ) -> float:
+) -> float:
     """
     Normalized Root Mean Squared Error (nRMSE) as a percentage of plant capacity.
     """
@@ -26,15 +27,54 @@ def calculate_nrmse(
 
     return float((rmse / capacity_kw) * 100.0)
 
+
 def calculate_skill_score(
     rmse_model: float,
     rsme_baseline: float,
-    ) -> float:
+) -> float:
     """
     Forecase Skill Score(%) relative to a baseline (e.g. Persistence).
     """
     return float((1.0 - (rmse_model / rsme_baseline)) * 100.0)
 
+
+def calculate_pinball_loss(
+    actual: pd.Series,
+    predicted: pd.Series,
+    alpha: float,
+) -> float:
+    """Pinball loss for quantile alpha"""
+    diff = actual - predicted
+    loss = np.maximum(alpha * diff, (alpha - 1.0) * diff)
+
+    return float(np.mean(loss))
+
+
+def calculate_picp(
+    actual: pd.Series,
+    lower_p10: pd.Series,
+    upper_p90: pd.Series,
+) -> float:
+    """
+    Pridiction Interval Coverage Probability (PICP) for nominal 80% interval [P10, P90].
+    Returns coverage as a percentage (0 to 100%)
+    """
+    inside = (actual >= lower_p10) & (actual <= upper_p90)
+
+    return float(np.mean(inside) * 100.0)
+
+
+def calculate_mpiw(
+    lower_p10: pd.Series,
+    upper_p90: pd.Series,
+    capacity_kw: float = 250.0,
+) -> float:
+    """
+    Normalized Mean prediction Interval Width (MPIW) as a percentage of plant capacity.
+    """
+    width = upper_p90 - lower_p10
+
+    return float((np.mean(width) / capacity_kw) * 100.0)
 
 
 if __name__ == "__main__":
