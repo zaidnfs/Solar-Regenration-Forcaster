@@ -1,4 +1,5 @@
 import lightgbm as lgb
+import numpy as np
 import pandas as pd
 
 
@@ -93,3 +94,23 @@ class LGBMQuantileForecaster:
 
         if not post_process:
             return preds_df
+
+        sorted_matrix = np.sort(preds_df[["p10", "p50", "p90"]].values, axis=1)
+        preds_df["p10"] = sorted_matrix[:, 0]
+        preds_df["p50"] = sorted_matrix[:, 1]
+        preds_df["p90"] = sorted_matrix[:, 2]
+
+        max_capacity = self.capacity_kw * 1.10
+        for col in ["p10", "p50", "p90"]:
+            preds_df[col] = preds_df[col].clip(lower=0.0, upper=max_capacity)
+
+        if "is_night" in df.columns:
+            night_mask = df["is_night"].astype(bool)
+        elif "solar_zenith" in df.columns:
+            night_mask = df["solar_zenith"] >= 85.0
+        else:
+            night_mask = pd.Series(False, index=df.index)
+
+        preds_df.loc[night_mask, ["p10", "p50", "p90"]] = 0.0
+
+        return preds_df
