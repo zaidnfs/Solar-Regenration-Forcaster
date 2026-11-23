@@ -1,3 +1,6 @@
+import pickle
+from pathlib import Path
+
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
@@ -22,7 +25,7 @@ class LGBMQuantileForecaster:
         self.random_state = random_state
 
         self.models: dict[float, lgb.LGBMRegressor] = {}
-        self.feature_name: list[str] = []
+        self.feature_names: list[str] = []
 
     def fit(
         self,
@@ -36,7 +39,7 @@ class LGBMQuantileForecaster:
         """
         Train independent LightGBM quantile regressors for each specified alpha.
         """
-        self.feature_name = list(x_train.columns)
+        self.feature_names = list(x_train.columns)
 
         for alpha in self.quantiles:
             if verbose:
@@ -68,7 +71,7 @@ class LGBMQuantileForecaster:
                 callbacks=callbacks,
             )
 
-            self.modedls[alpha] = model
+            self.models[alpha] = model
         return self
 
     def predict(
@@ -114,3 +117,36 @@ class LGBMQuantileForecaster:
         preds_df.loc[night_mask, ["p10", "p50", "p90"]] = 0.0
 
         return preds_df
+
+    def save(self, output_dir: str = "models") -> None:
+        """
+        Serialize trained models and metadata to disk.
+        """
+        path = Path(output_dir)
+        path.mkdir(parents=True, exist_ok=True)
+
+        bundle = {
+            "quantiles": self.quantiles,
+            "capacity_kw": self.capacity_kw,
+            "feature_name": self.feature_names,
+            "models": self.models,
+        }
+        with open(path / "lgbm_quantile_bundle.pkl", "wb") as f:
+            pickle.dump(bundle, f)
+        print(f"Model bundle saved to: {path / 'lgbm_quantile_bundle.pkl'}")
+
+    @classmethod
+    def load(cls, filepath: str = "models/lgbm_quantile_bundle.pkl") -> "LGBMQuantileForecaster":
+        """
+        Load serialized model bundle frfom disk.
+        """
+        with open(filepath, "rb") as f:
+            bundle = pickle.load(f)
+
+        instance = cls(
+            quantiles=bundle["quantiles"],
+            capacity_kw=bundle["capacity_kw"],
+        )
+        instance.feature_names = bundle["feature_name"]
+        instance.models = bundle["models"]
+        return instance
