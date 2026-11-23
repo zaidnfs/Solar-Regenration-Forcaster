@@ -150,3 +150,73 @@ class LGBMQuantileForecaster:
         instance.feature_names = bundle["feature_name"]
         instance.models = bundle["models"]
         return instance
+
+if __name__ == "__main__":
+    from src.evaluation.metrics import (
+        calculate_mpiw,
+        calculate_nmae,
+        calculate_nrmse,
+        calculate_picp,
+        calculate_pinball_loss,
+        calculate_skill_score,
+    )
+    from src.models.baselines import PersistenceModel
+
+    print("--- Loading datasets ---")
+    train_df = pd.read_parquet("data/processed/train.parquet")
+    val_df = pd.read_parquet("data/processed/val.parquet")
+    test_df = pd.read_parquet("data/processed/test.parquet")
+
+    target_col = "power_kw"
+    excluded_cols = [target_col, "capacity_factor"]
+    feature_cols = [c for c in train_df.columns if c not in excluded_cols]
+
+    print(f"Features count: {len(feature_cols)}")
+    print(f"Train sample : {len(train_df)} | val: {len(val_df)} | Test: {len(test_df)}")
+
+    x_train, y_train = train_df[feature_cols], train_df[target_col]
+    x_val, y_val = val_df[feature_cols], val_df[target_col]
+
+    forecaster = LGBMQuantileForecaster()
+    print("\n--- Training LightGBM Quantile Models (P10, P50, P90) ---")
+    forecaster.fit(x_train, y_train, x_val, y_val, early_stopping_rounds=50, verbose=True)
+
+    forecaster.save("models")
+
+    preds = forecaster.predict(test_df, post_process=True)
+    actuals = test_df[target_col]
+
+    p_preds = PersistenceModel().predict(test_df)
+    p_nrmse = calculate_nrmse(actuals, p_preds)
+
+    p50_nmae = calculate_nmae(actuals, preds["p50"])
+    p50_nrmse = calculate_nrmse(actuals, preds["p50"])
+    skill_score = calculate_skill_score(p50_nrmse, p_nrmse)
+
+    loss_p10 = calculate_pinball_loss(actuals, preds["p10"], alpha=0.10)
+    loss_p50 = calculate_pinball_loss(actuals, preds["p50"], alpha=0.50)
+    loss_p90 = calculate_pinball_loss(actuals, preds["p90"], alpha=0.90)
+    picp = calculate_picp(actuals, preds["p10"], preds["p90"])
+    mpiw = calculate_mpiw(preds["p10"], preds["p90"])
+
+    print("\n--- TEST SET PERFORMANCE EVALUATION ---")
+    print(f"LightGBM P50 (Median)   : nMAE = {p50_nmae:.2f}% | nRMSE = {p50_nrmse:.2f}%")
+    print(f"Skill Score vs. Persist : {skill_score:.2f}%")
+    print(f"Pinball Losses          : P10 = {loss_p10:.3f} | P50 = {loss_p50:.3f} | P90 = {loss_p90:.3f}")
+    print(f"Prediction Interval     : PICP = {picp:.1f}% (Nominal Target: 80.0%) | MPIW = {mpiw:.2f}%")
+
+    print("-------------------------------------------------------------")
+
+    sample = pd.DataFrame({
+        "Actual_KW": actuals,
+        "P10": preds["p10"].round(1),
+        "P50": preds["p50"].round(1),
+        "P90": preds["p90"].round(1),
+    }).iloc[12:24]
+    print("\n--- Predictions Sample (Daylight Test Slice) ---")
+    print(sample)
+
+
+
+
+
